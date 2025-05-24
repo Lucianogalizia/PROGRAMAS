@@ -17,25 +17,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import logging
+import traceback
+
+logger = logging.getLogger("uvicorn.error")
+
 @app.post("/process/")
 async def process(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith((".xls", ".xlsx", ".xlsm")):
-        raise HTTPException(400, "Formato inválido: se requiere un archivo Excel.")
-
     content = await file.read()
-
-    # parsear
     try:
         df = parse_datasheet(content)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-    # generar programa
-    try:
         program = build_program(df)
     except Exception as e:
-        raise HTTPException(500, f"Error al generar el programa: {e}")
-
-    return JSONResponse({"program": program})
+        # Esto escribirá el stack completo en stderr
+        logger.error("Error en /process/:\n%s", traceback.format_exc())
+        # Y luego devolvemos el 500
+        raise HTTPException(status_code=500, detail="Error interno. Revisa los logs.")
+    return JSONResponse(content={"program": program})
 
 
