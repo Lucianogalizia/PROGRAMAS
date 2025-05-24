@@ -1,25 +1,28 @@
-# backend/app/utils.py
+# pulling-app/backend/app/utils.py
 
-from io import BytesIO
 import pandas as pd
+import io
 
 def parse_datasheet(content: bytes) -> pd.DataFrame:
     """
-    Lee el contenido binario de un archivo Excel y devuelve un pandas.DataFrame
-    que representa el datasheet de entrada, validando que contenga las columnas
-    mínimas necesarias.
+    Toma el contenido bruto de un Excel (.xls/.xlsx/.xlsm),
+    busca la pestaña 'Data Sheet' y devuelve un DataFrame.
     """
-    # 1) Cargar el contenido en un buffer de memoria
-    buffer = BytesIO(content)
-    
-    # 2) Leer la primera hoja del Excel con openpyxl
-    df = pd.read_excel(buffer, engine="openpyxl")
-    
-    # 3) Validar que existan las columnas obligatorias
-    required = ["POZO", "BATERÍA", "EQUIPO"]
-    missing = [col for col in required if col not in df.columns]
-    if missing:
-        raise ValueError(f"Faltan columnas obligatorias en el datasheet: {', '.join(missing)}")
-    
-    # 4) Retornar el DataFrame crudo para procesar en el pipeline
+    # Cargamos el Excel en memoria
+    try:
+        xls = pd.ExcelFile(io.BytesIO(content), engine="openpyxl")
+    except Exception as e:
+        raise ValueError(f"No pude abrir el Excel: {e}")
+
+    # Verificamos que exista la hoja 'Data Sheet'
+    if "Data Sheet" not in xls.sheet_names:
+        raise ValueError("No encontré la pestaña 'Data Sheet' en el Excel.")
+
+    # Parseamos esa hoja
+    try:
+        df = xls.parse("Data Sheet")
+    except Exception as e:
+        raise ValueError(f"Error al parsear hoja 'Data Sheet': {e}")
+
     return df
+
