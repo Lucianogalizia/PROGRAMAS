@@ -2,28 +2,25 @@
 
 import pandas as pd
 import io
-from fastapi.middleware.cors import CORSMiddleware
 
 def parse_datasheet(content: bytes) -> pd.DataFrame:
     """
     Toma el contenido bruto de un Excel (.xls/.xlsx/.xlsm),
     busca la pestaña 'Data Sheet' y devuelve un DataFrame.
     """
-    # Cargamos el Excel en memoria
     try:
         xls = pd.ExcelFile(io.BytesIO(content), engine="openpyxl")
     except Exception as e:
         raise ValueError(f"No pude abrir el Excel: {e}")
 
-    # Verificamos que exista la hoja 'Data Sheet'
     if "Data Sheet" not in xls.sheet_names:
         raise ValueError("No encontré la pestaña 'Data Sheet' en el Excel.")
 
-    # Parseamos esa hoja
     try:
         df = xls.parse("Data Sheet")
     except Exception as e:
         raise ValueError(f"Error al parsear hoja 'Data Sheet': {e}")
 
     return df
+
 
