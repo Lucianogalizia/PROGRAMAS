@@ -2,6 +2,7 @@
 
 import pandas as pd
 import io
+from fastapi.middleware.cors import CORSMiddleware
 
 def parse_datasheet(content: bytes) -> pd.DataFrame:
     """
