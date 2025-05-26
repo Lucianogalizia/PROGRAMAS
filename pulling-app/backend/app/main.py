@@ -4,6 +4,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 import pandas as pd
 import io
+import traceback
 
 app = FastAPI(title="Generador de Programas de Pulling")
 
@@ -11,22 +12,37 @@ app = FastAPI(title="Generador de Programas de Pulling")
 async def process(file: UploadFile = File(...)):
     # 1) Validar extensión
     if not file.filename.lower().endswith((".xls", ".xlsx", ".xlsm")):
-        raise HTTPException(status_code=400,
-                            detail="Formato inválido: se requiere un archivo Excel (.xls/.xlsx/.xlsm).")
+        raise HTTPException(
+            status_code=400,
+            detail="Formato inválido: se requiere un archivo Excel (.xls/.xlsx/.xlsm)."
+        )
+
     content = await file.read()
 
     # 2) Abrir como ExcelFile y verificar que exista la hoja "Data Sheet"
     try:
         xls = pd.ExcelFile(io.BytesIO(content), engine="openpyxl")
     except Exception as e:
+        print("ERROR al abrir el Excel:\n", traceback.format_exc(), flush=True)
         raise HTTPException(status_code=400, detail=f"No pude abrir el Excel: {e}")
 
     if "Data Sheet" not in xls.sheet_names:
-        raise HTTPException(status_code=400, detail="No encontré la pestaña 'Data Sheet' en el Excel.")
+        print("ERROR hoja faltante:\n", traceback.format_exc(), flush=True)
+        raise HTTPException(
+            status_code=400,
+            detail="No encontré la pestaña 'Data Sheet' en el Excel."
+        )
 
     # 3) Parsear solo la hoja "Data Sheet" sin cabeceras
-    df0 = xls.parse("Data Sheet", header=None)
-    df  = df0.copy()
+    try:
+        df0 = xls.parse("Data Sheet", header=None)
+    except Exception as e:
+        print("ERROR al parsear Data Sheet:\n", traceback.format_exc(), flush=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error al parsear hoja 'Data Sheet': {e}"
+        )
+    df = df0.copy()
 
     # 4) Función helper para rebanar tablas fijas
     def slice_table(r0, r1, c0, c1, cols):
@@ -35,42 +51,50 @@ async def process(file: UploadFile = File(...)):
         return t.dropna(subset=[cols[0]])
 
     # 5) Extraer las 4 tablas según tus rangos
-    tubing_act = slice_table(
-        r0=31, r1=54, c0=3, c1=8,
-        cols=["ELEMENTO","DIÁMETRO","PROFUNDIDAD","CANTIDAD","COMENTARIO"]
-    )
-    tubing_fin = slice_table(
-        r0=31, r1=54, c0=10, c1=17,
-        cols=["ELEMENTO","CONDICIÓN","DIÁMETRO","PROFUNDIDAD",
-              "CANTIDAD","COMENTARIO","LONGITUD ELEMENTO"]
-    )
-    varillas_act = slice_table(
-        r0=55, r1=78, c0=3, c1=8,
-        cols=["ELEMENTO","DIÁMETRO","PROFUNDIDAD","CANTIDAD","COMENTARIO"]
-    )
-    varillas_fin = slice_table(
-        r0=55, r1=78, c0=10, c1=19,
-        cols=["ELEMENTO","CONDICIÓN","DIÁMETRO","PROFUNDIDAD",
-              "ACERO V/B","CUPLA SH/FS","ACERO CUPLA","CANTIDAD","COMENTARIO"]
-    )
+    try:
+        tubing_act = slice_table(
+            r0=31, r1=54, c0=3,  c1=8,
+            cols=["ELEMENTO","DIÁMETRO","PROFUNDIDAD","CANTIDAD","COMENTARIO"]
+        )
+        tubing_fin = slice_table(
+            r0=31, r1=54, c0=10, c1=17,
+            cols=[
+                "ELEMENTO","CONDICIÓN","DIÁMETRO","PROFUNDIDAD",
+                "CANTIDAD","COMENTARIO","LONGITUD ELEMENTO"
+            ]
+        )
+        varillas_act = slice_table(
+            r0=55, r1=78, c0=3,  c1=8,
+            cols=["ELEMENTO","DIÁMETRO","PROFUNDIDAD","CANTIDAD","COMENTARIO"]
+        )
+        varillas_fin = slice_table(
+            r0=55, r1=78, c0=10, c1=19,
+            cols=[
+                "ELEMENTO","CONDICIÓN","DIÁMETRO","PROFUNDIDAD",
+                "ACERO V/B","CUPLA SH/FS","ACERO CUPLA","CANTIDAD","COMENTARIO"
+            ]
+        )
+    except Exception as e:
+        print("ERROR al extraer tablas:\n", traceback.format_exc(), flush=True)
+        raise HTTPException(status_code=500, detail=f"Error extrayendo tablas: {e}")
 
     # 6) Metadatos en celdas fijas: columna D→idx 3, E→idx 4
     meta_pos = {
-        "POZO":                   (2, 4),   # D3 → E3
-        "BATERIA":                (4, 4),   # D5 → E5
-        "EQUIPO":                 (6, 4),   # D7 → E7
-        "NETA_ASOCIADA":          (8, 4),   # D9 → E9
-        "DEFINICION":             (10,4),   # D11 → E11
-        "MANIOBRAS_MOTIVO":       (12,4),   # D13 → E13
-        "PRIORIDAD_PROGRAMA":     (14,4),   # D15 → E15
-        "ANTECEDENTE_1":          (17,4),   # D18 → E18
-        "ANTECEDENTE_2":          (18,4),
-        "ANTECEDENTE_3":          (19,4),
-        "ANTECEDENTE_4":          (20,4),
-        "REQ_ESP_1":              (22,4),   # D23 → E23
-        "REQ_ESP_2":              (23,4),
-        "REQ_ESP_3":              (24,4),
-        "REQ_ESP_4":              (25,4),
+        "POZO":               (2, 4),   # D3 → E3
+        "BATERIA":            (4, 4),   # D5 → E5
+        "EQUIPO":             (6, 4),   # D7 → E7
+        "NETA_ASOCIADA":      (8, 4),   # D9 → E9
+        "DEFINICION":         (10,4),   # D11 → E11
+        "MANIOBRAS_MOTIVO":   (12,4),   # D13 → E13
+        "PRIORIDAD_PROGRAMA": (14,4),   # D15 → E15
+        "ANTECEDENTE_1":      (17,4),   # D18 → E18
+        "ANTECEDENTE_2":      (18,4),
+        "ANTECEDENTE_3":      (19,4),
+        "ANTECEDENTE_4":      (20,4),
+        "REQ_ESP_1":          (22,4),   # D23 → E23
+        "REQ_ESP_2":          (23,4),
+        "REQ_ESP_3":          (24,4),
+        "REQ_ESP_4":          (25,4),
     }
     meta = {}
     for key, (r, c) in meta_pos.items():
@@ -91,7 +115,8 @@ async def process(file: UploadFile = File(...)):
     return JSONResponse(content=resultado)
 
 
-    return JSONResponse(content=resultado)
+
+    
 
 
 
